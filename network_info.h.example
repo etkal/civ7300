@@ -1,0 +1,6 @@
+// Copy this file to network_info.h and fill in your local Wi-Fi credentials.
+
+#pragma once
+
+auto constexpr g_szWifiSsid = "YOUR_WIFI_SSID";
+auto constexpr g_szWifiPassword = "YOUR_WIFI_PASSWORD";
