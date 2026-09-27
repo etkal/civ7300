@@ -1,7 +1,7 @@
 /*
  * Pico LED class
  *
- * (c) 2025-2026 Erik Tkal
+ * Copyright (c) 2025-2026 Erik Tkal
  *
  */
 
@@ -46,17 +46,18 @@ static inline uint32_t scale_color(uint32_t color, uint8_t factor = max_lum)
     return (((uint32_t)(g * factor / 256) << 16) | (uint32_t)(r * factor / 256) << 8) | (uint32_t)(b * factor / 256);
 }
 
-auto constexpr led_white = urgb_u32(0xFF, 0xFF, 0xFF);
-auto constexpr led_on = urgb_u32(0xFF, 0xFF, 0xFF);
+auto constexpr led_white = urgb_u32(0x80, 0x80, 0xFF);
+auto constexpr led_on = urgb_u32(0x80, 0x80, 0xFF);
 auto constexpr led_black = urgb_u32(0, 0, 0);
 auto constexpr led_off = urgb_u32(0, 0, 0);
 
-auto constexpr led_red = urgb_u32(0xFF, 0, 0);
-auto constexpr led_green = urgb_u32(0, 0xFF, 0);
+auto constexpr led_red = urgb_u32(0x80, 0, 0);
+auto constexpr led_green = urgb_u32(0, 0x80, 0);
 auto constexpr led_blue = urgb_u32(0, 0, 0xFF);
-auto constexpr led_cyan = urgb_u32(0, 0xFF, 0xFF);
-auto constexpr led_magenta = urgb_u32(0xFF, 0, 0xFF);
-auto constexpr led_yellow = urgb_u32(0xFF, 0xFF, 0);
+auto constexpr led_cyan = urgb_u32(0, 0x80, 0xFF);
+auto constexpr led_magenta = urgb_u32(0x80, 0, 0xFF);
+auto constexpr led_yellow = urgb_u32(0x80, 0x80, 0);
+auto constexpr led_orange = urgb_u32(0x90, 0x40, 0);
 
 constexpr uint led_all = UINT32_MAX;
 
@@ -72,10 +73,10 @@ public:
     virtual void On(uint idx = 0) = 0;
     virtual void Off(uint idx = 0) = 0;
     virtual void Show() = 0;
-    virtual void SetPixel(uint idx, uint32_t color) = 0;
+    virtual void SetPixel(uint idx, uint32_t color, uint8_t brightness = 0) = 0;
     virtual uint32_t GetPixel(uint idx) = 0;
     virtual void SetIgnore(std::vector<uint32_t> vIgnore) {};
-    void Blink_ms(uint idx = 0, uint duration = 50, uint32_t color = led_off);
+    void Blink_ms(uint idx = 0, uint duration = 50);
     void DoWork();
     static LED::Shared GetLED(uint nLEDIndex = 0);
 
@@ -107,7 +108,7 @@ public:
     void On(uint idx = 0) override;
     void Off(uint idx = 0) override;
     void Show() override;
-    void SetPixel(uint idx, uint32_t color) override;
+    void SetPixel(uint idx, uint32_t color, uint8_t brightness = 0) override;
     uint32_t GetPixel(uint idx) override;
     void SetIgnore(std::vector<uint32_t> vIgnore) override;
 
@@ -139,7 +140,7 @@ public:
     void On(uint idx = 0) override;
     void Off(uint idx = 0) override;
     void Show() override;
-    void SetPixel(uint idx, uint32_t color) override;
+    void SetPixel(uint idx, uint32_t color, uint8_t brightness = 0) override;
     uint32_t GetPixel(uint idx) override;
 
 private:

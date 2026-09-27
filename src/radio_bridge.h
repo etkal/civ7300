@@ -1,7 +1,7 @@
 /*
  * RadioBridge class
  *
- * (c) 2026 Erik Tkal
+ * Copyright (c) 2026 Erik Tkal
  *
  * Interfaces with a CI-V radio connected on a UART. The radio's CI-V bus is bidirectional through
  * external buffers: any bytes written to the radio are echoed back on its RX line, so those echoed

@@ -5,6 +5,23 @@
  * to the radio's CI-V bus) and keeps the radio's clock synchronized from a serial GPS device on
  * UART1 and/or NTP over Wifi (pico_w/pico2_w only), selected at build time.
  *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
  */
 
 #include <iostream>
@@ -13,17 +30,13 @@
 
 #if defined(PLATFORM_PICO_W)
 #include "pico/cyw43_arch.h"
-#if TIMEMGR_ENABLE_NTP
+#endif
 #include "network_info.h"
 #include "wifi_connection.h"
-#endif
-#endif
 
 #include "button.h"
 #include "civ7300.h"
-#if TIME_SYNC_USE_GPS
 #include "gps_time_sync.h"
-#endif
 #include "led.h"
 #include "radio_bridge.h"
 #include "timemgr.h"
@@ -55,6 +68,10 @@
 // GPIO pin for a button
 #define PIN_BUTTON 6
 
+#if TIME_SYNC_USE_GPS && !defined(UART1_DEVICE)
+#error "GPS time synchronization requires a serial GPS device (UART1) to be defined"
+#endif
+
 extern "C"
 {
     int _getentropy(void* buffer, size_t length)
@@ -82,15 +99,11 @@ int main()
     }
 #endif
 
-    TimeMgr::InitializeSingleton(TIME_ZONE); // Needed for logging timestamps
     LogInfo("Starting civ7300 radio bridge application...");
 
-#if defined(PLATFORM_PICO_W) && TIMEMGR_ENABLE_NTP
-    // Wifi connection is driven asynchronously from the main loop; NTP sync is gated on it being up.
-    WifiConnection::Shared spWifi = std::make_shared<WifiConnection>(g_szWifiSsid, g_szWifiPassword);
-    spWifi->Initialize();
-    TimeMgr::EnableNtpAutoRetry();
-#endif
+    TimeMgr::InitializeSingleton(TIME_ZONE); // Needed for logging timestamps
+
+    LogInfo("Creating LED and button objects...");
 
 #if defined(SEEED_XIAO_RP2040)
     // Clear LED(s) on XIAO (default on)
@@ -130,38 +143,45 @@ int main()
     spButton->Initialize();
 #endif
 
-    LogInfo("Creating UART objects...");
+    WifiConnection::Shared spWifi = std::make_shared<WifiConnection>();
+#if TIME_SYNC_USE_NTP
+    LogInfo("Initializing Wifi connection object...");
+    // Wifi connection is driven asynchronously from the main loop; NTP sync is gated on it being up.
+    spWifi->Initialize(g_szWifiSsid, g_szWifiPassword);
+    TimeMgr::EnableNtpAutoRetry();
+#endif
+
+    LogInfo("Creating UART and CI-V objects...");
 
     // UART0: connected to the radio (CI-V, bidirectional through external buffers)
     Uart::Shared spRadioUart = std::make_shared<Uart>();
     spRadioUart->Initialize(UART0_DEVICE, PIN_UART0_TX, PIN_UART0_RX, CIV_BAUD_RATE, DATA_BITS, STOP_BITS, PARITY);
 
+    // The radio bridge handles data transfers to and from the radio
     RadioBridge::Shared spBridge = std::make_shared<RadioBridge>(spRadioUart);
 
     // UART1: connected to a serial GPS device, used to keep the radio's clock synchronized
-#if TIME_SYNC_USE_GPS
     GpsTimeSync::Shared spGpsTimeSync;
-#if defined(UART1_DEVICE)
+#if TIME_SYNC_USE_GPS && defined(UART1_DEVICE)
     Uart::Shared spGpsUart = std::make_shared<Uart>();
     spGpsUart->Initialize(UART1_DEVICE, PIN_UART1_TX, PIN_UART1_RX, GPS_BAUD_RATE, DATA_BITS, STOP_BITS, PARITY);
     spGpsTimeSync = std::make_shared<GpsTimeSync>(spGpsUart);
-#endif
-#endif
+#endif // TIME_SYNC_USE_GPS && defined(UART1_DEVICE)
+
+    LogInfo("Creating the Civ7300 object...");
 
     // Periodically verifies/corrects the radio's date, time, and UTC offset via CI-V commands.
     Civ7300::Shared spCiv7300 = std::make_shared<Civ7300>(spBridge);
-    spCiv7300->EnableFrequencyPoll(true);
+    spCiv7300->EnableFrequencyPoll(false);
     spCiv7300->EnableTimeSync(true);
     spCiv7300->EnableTrafficLogging(false);
-    spLED->SetPixel(led_all, led_red);
-    spLED->Show();
 
+    // Initialize the previous state variables for the main loop LED status updates.
     uint64_t prevNowSecond = TimeMgr::CurrentEpochSeconds();
-    bool bPrevRadioConnected {false};
-    bool bPrevClockSynced {false};
-#if defined(PLATFORM_PICO_W) && TIMEMGR_ENABLE_NTP
+    bool bPrevRadioConnected {true};
+    bool bPrevClockSynced {true};
     WifiState prevWifiState = WifiState::Unknown;
-#endif
+
     LogInfo("Running radio bridge...");
     while (true)
     {
@@ -170,9 +190,25 @@ int main()
             uint64_t nowSecond = TimeMgr::CurrentEpochSeconds();
             bool bRadioConnected = spCiv7300->IsRadioConnected();
             bool bClockSynced = spCiv7300->IsClockSynced();
-#if defined(PLATFORM_PICO_W) && TIMEMGR_ENABLE_NTP
-            WifiState wifiState = spWifi ? spWifi->GetState() : WifiState::Unknown;
-#endif
+            WifiState wifiState = spWifi->GetState();
+
+            if (bRadioConnected != bPrevRadioConnected || bClockSynced != bPrevClockSynced)
+            {
+                bPrevClockSynced = bClockSynced;
+                bPrevRadioConnected = bRadioConnected;
+                uint32_t statusColor = !bRadioConnected ? led_red : bClockSynced ? led_green : led_orange;
+                LED::GetLED(0)->SetPixel(2, statusColor);
+            }
+
+            if (wifiState != prevWifiState)
+            {
+                prevWifiState = wifiState;
+                uint32_t wifiColor = WifiState::Connected == wifiState    ? led_blue
+                                     : WifiState::Connecting == wifiState ? led_orange
+                                                                          : led_red;
+                LED::GetLED(0)->SetPixel(1, wifiColor);
+            }
+
             if (nowSecond != prevNowSecond)
             {
                 prevNowSecond = nowSecond;
@@ -180,53 +216,45 @@ int main()
                 uint32_t blinkColor = TimeMgr::TimeSource::Gps == clockSyncSource   ? led_green
                                       : TimeMgr::TimeSource::Ntp == clockSyncSource ? led_blue
                                                                                     : led_red;
-                LED::GetLED(0)->Blink_ms(0, 30, blinkColor);
+                LED::GetLED(0)->SetPixel(0, scale_color(blinkColor, 255));
+                LED::GetLED(0)->Blink_ms(0, 50);
             }
-
-            if (bRadioConnected != bPrevRadioConnected || bClockSynced != bPrevClockSynced)
-            {
-                bPrevClockSynced = bClockSynced;
-                bPrevRadioConnected = bRadioConnected;
-                uint32_t statusColor = !bRadioConnected ? led_red : bClockSynced ? led_green : led_yellow;
-                LED::GetLED(0)->SetPixel(2, statusColor);
-            }
-
-#if defined(PLATFORM_PICO_W) && TIMEMGR_ENABLE_NTP
-            if (wifiState != prevWifiState)
-            {
-                prevWifiState = wifiState;
-                uint32_t wifiColor = WifiState::Connected == wifiState    ? led_blue
-                                     : WifiState::Connecting == wifiState ? led_yellow
-                                                                          : led_yellow;
-                LED::GetLED(0)->SetPixel(1, wifiColor);
-            }
-#endif
         }
 
+        // Perform any main loop work for LEDs (e.g. turning off)
         if (spLED)
         {
             spLED->DoWork();
         }
+
+        // Perform any main loop work for the radio bridge
         spBridge->DoWork();
-#if TIME_SYNC_USE_GPS
+
+        // Handle any time sync tasks
         if (spGpsTimeSync)
         {
             spGpsTimeSync->DoWork();
         }
-#endif
-#if defined(PLATFORM_PICO_W) && TIMEMGR_ENABLE_NTP
+
+        // Perform any main loop work for the WiFi module
         spWifi->DoWork();
+
+        // Attempt NTP time sync if WiFi is connected
         if (spWifi->IsConnected())
         {
             TimeMgr::AttemptNtpTimeSync();
         }
-#endif
+
+        // Perform any main loop work for the CI-V radio
         spCiv7300->DoWork();
+
+        // Perform any main loop work for the button module
         if (spButton)
         {
             // placeholder for button-triggered commands to the radio
         }
-        tight_loop_contents();
+
+        tight_loop_contents(); // Does nothing, just a marker
     }
 
 #if defined(PLATFORM_PICO_W)

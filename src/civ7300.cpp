@@ -1,8 +1,25 @@
 /*
  * Civ7300
  *
- * (c) 2026 Erik Tkal
+ * Copyright (c) 2026 Erik Tkal
  *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
  */
 
 #include "civ7300.h"
@@ -27,6 +44,7 @@ namespace
     constexpr uint8_t civExpectedRadioId = 0x94;           // IC-7300's CI-V transceiver ID
     constexpr uint32_t civFrequencyCheckIntervalMs = 100;  // Frequency polling interval
     constexpr uint32_t civRadioIdCheckIntervalMs = 1000;   // Minimum spacing between radio ID poll attempts
+    constexpr uint32_t civClockCheckIntervalMs = 300000;   // Interval for checking clock synchronization
     constexpr uint32_t civClockSetRetryIntervalMs = 10000; // Retry time on clock set failure
     constexpr uint8_t civScSetModeMisc = 0x05;
     constexpr uint16_t civSubDate = 94;
@@ -97,16 +115,16 @@ namespace
     }
 } // namespace
 
-Civ7300::Civ7300(RadioBridge::Shared spBridge, uint8_t radioAddr, uint8_t controllerAddr, uint32_t timeCheckIntervalMs)
+Civ7300::Civ7300(RadioBridge::Shared spBridge, uint8_t radioAddr, uint8_t controllerAddr)
     : m_spBridge(std::move(spBridge)),
       m_radioAddr(radioAddr),
-      m_controllerAddr(controllerAddr),
-      m_timeCheckIntervalMs(timeCheckIntervalMs)
+      m_controllerAddr(controllerAddr)
 {
     m_spBridge->SetRadioDataSink([this](const uint8_t* pData, size_t nLen) {
         onRadioData(pData, nLen);
     });
-    m_nextTimeCheckTime = make_timeout_time_ms(timeCheckIntervalMs);
+    m_timeCheckIntervalMs = civClockCheckIntervalMs;
+    m_nextTimeCheckTime = make_timeout_time_ms(m_timeCheckIntervalMs);
     m_nextFrequencyCheckTime = make_timeout_time_ms(civFrequencyCheckIntervalMs);
     m_nextRadioIdCheckTime = get_absolute_time();
 }
@@ -284,55 +302,57 @@ void Civ7300::DoWork()
         });
     }
 
-    if (!m_bTimeSyncEnabled)
+    if (m_bTimeSyncEnabled)
     {
-        return;
-    }
-
-    if (m_syncState == SyncState::WaitingForMinute)
-    {
-        if (absolute_time_diff_us(get_absolute_time(), m_applyAtTime) > 0)
+        if (m_syncState == SyncState::WaitingForMinute)
         {
+            if (absolute_time_diff_us(get_absolute_time(), m_applyAtTime) > 0)
+            {
+                return;
+            }
+            m_nextTimeCheckTime = make_timeout_time_ms((((m_timeCheckIntervalMs / 1000 / 60) * 60) - 2) * 1000);
+            beginClockWrite();
             return;
         }
-        m_nextTimeCheckTime = make_timeout_time_ms((((m_timeCheckIntervalMs / 1000 / 60) * 60) - 2) * 1000);
-        beginClockWrite();
-        return;
-    }
 
-    if (m_syncState != SyncState::Idle)
-    {
-        return;
-    }
-
-    if (!m_bRadioConnected)
-    {
-        if (!m_bRadioIdRequestPending && TimeMgr::IsWallClockValid() &&
-            absolute_time_diff_us(get_absolute_time(), m_nextRadioIdCheckTime) <= 0)
+        if (m_syncState != SyncState::Idle)
         {
-            m_nextRadioIdCheckTime = make_timeout_time_ms(civRadioIdCheckIntervalMs);
-            m_bRadioIdRequestPending = true;
-            GetRadioId([this](bool bOk, uint8_t radioId) {
-                m_bRadioIdRequestPending = false;
-                if (bOk && radioId == civExpectedRadioId)
+            // We're already waiting for something, so we shouldn't initiate another action
+            return;
+        }
+    }
+
+    // Check the radio ID periodically. Initially, this ensures that we are communicating with the expected radio model.
+    // Once connected, this check just verified continued connection, otherwise we may not notice if we are not polling
+    // for frequency updates, etc.
+    if (!m_bRadioIdRequestPending && TimeMgr::IsWallClockValid() && absolute_time_diff_us(get_absolute_time(), m_nextRadioIdCheckTime) <= 0)
+    {
+        m_nextRadioIdCheckTime = make_timeout_time_ms(civRadioIdCheckIntervalMs);
+        m_bRadioIdRequestPending = true;
+        GetRadioId([this](bool bOk, uint8_t radioId) {
+            m_bRadioIdRequestPending = false;
+            if (bOk && radioId == civExpectedRadioId)
+            {
+                // Radio ID verified successfully, only log the first time
+                if (!m_bRadioConnected)
                 {
                     m_bRadioConnected = true;
                     m_nextTimeCheckTime = get_absolute_time();
                     LogInfo("Radio ID verified as IC-7300 (0x94)");
                 }
-            });
-        }
+            }
+        });
         return;
     }
 
-    if (absolute_time_diff_us(get_absolute_time(), m_nextTimeCheckTime) > 0)
+    if (absolute_time_diff_us(get_absolute_time(), m_nextTimeCheckTime) <= 0)
     {
+        m_nextTimeCheckTime = make_timeout_time_ms(m_timeCheckIntervalMs);
+        if (TimeMgr::IsWallClockValid())
+        {
+            beginClockRead();
+        }
         return;
-    }
-    m_nextTimeCheckTime = make_timeout_time_ms(m_timeCheckIntervalMs);
-    if (TimeMgr::IsWallClockValid())
-    {
-        beginClockRead();
     }
 }
 
@@ -389,7 +409,6 @@ void Civ7300::evaluateClockRead()
 #if (!TIME_SYNC_ALWAYS_SYNC)
         LogInfo("Radio clock is in sync");
         m_bClockSynced = true;
-        m_clockSyncSource = TimeMgr::GetTimeSource();
         m_syncState = SyncState::Idle;
         return;
 #endif
@@ -407,6 +426,7 @@ void Civ7300::evaluateClockRead()
         const uint64_t secondsUntilNextMinute = (secondsIntoMinute == 0) ? 60 : (60 - secondsIntoMinute);
         m_applyAtTime = delayed_by_us(get_absolute_time(), secondsUntilNextMinute * 1000000ULL);
         m_syncState = SyncState::WaitingForMinute;
+        m_bClockSynced = false; // Clock is no longer considered synced (really only useful to cause the LED state to change)
 #if (!TIME_SYNC_ALWAYS_SYNC)
     }
     else
@@ -422,7 +442,6 @@ void Civ7300::evaluateClockRead()
                 return;
             }
             m_bClockSynced = true;
-            m_clockSyncSource = TimeMgr::GetTimeSource();
         });
     }
 #endif
@@ -459,14 +478,12 @@ void Civ7300::beginClockWrite()
                     }
                     m_syncState = SyncState::Idle;
                     m_bClockSynced = true;
-                    m_clockSyncSource = TimeMgr::GetTimeSource();
                     LogInfo("Radio clock set");
                 });
                 return;
             }
             m_syncState = SyncState::Idle;
             m_bClockSynced = true;
-            m_clockSyncSource = TimeMgr::GetTimeSource();
             LogInfo("Radio clock set");
         });
     });
@@ -541,7 +558,6 @@ void Civ7300::processCommand()
         }
         m_bRadioConnected = false;
         m_bClockSynced = false;
-        m_clockSyncSource = TimeMgr::TimeSource::Unknown;
         m_syncState = SyncState::Idle;
         if (callback)
         {

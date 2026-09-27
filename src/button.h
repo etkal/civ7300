@@ -1,7 +1,7 @@
 /*
  * Pico Button class
  *
- * (c) 2026 Erik Tkal
+ * Copyright (c) 2026 Erik Tkal
  *
  * Button class for handling GPIO button events on the Raspberry Pi Pico.
  *

@@ -7,8 +7,9 @@ target_sources(civ7300 PUBLIC
     radio_bridge.cpp
     timemgr.cpp
     uart.cpp
+    wifi_connection.cpp
 )
 
-if(TIME_SYNC_USE_NTP AND (PICO_BOARD STREQUAL pico_w OR PICO_BOARD STREQUAL pico2_w))
-    target_sources(civ7300 PUBLIC wifi_connection.cpp)
-endif()
+# if(TIME_SYNC_USE_NTP AND (PICO_BOARD STREQUAL pico_w OR PICO_BOARD STREQUAL pico2_w))
+#     target_sources(civ7300 PUBLIC wifi_connection.cpp)
+# endif()

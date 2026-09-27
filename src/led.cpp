@@ -1,8 +1,25 @@
 /*
  * Pico LED class
  *
- * (c) 2025-2026 Erik Tkal
+ * Copyright (c) 2025-2026 Erik Tkal
  *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
  */
 
 #include "led.h"
@@ -37,15 +54,11 @@ LED::~LED()
     sm_mapLEDs.erase(sm_mapLEDs.begin() + m_nIndexInMapLEDs);
 }
 
-void LED::Blink_ms(uint idx, uint duration, uint32_t color)
+void LED::Blink_ms(uint idx, uint duration)
 {
     std::unique_ptr<BlinkContext> spContext = std::make_unique<BlinkContext>();
     spContext->spLED = Shared(this);
     spContext->idx = idx;
-    if (color != led_off)
-    {
-        SetPixel(idx, color);
-    }
     On(idx);
     add_repeating_timer_ms(duration, LED::ledOffTimerCallback, reinterpret_cast<void*>(spContext.release()), &m_LedTimer);
 }
@@ -128,7 +141,7 @@ void LED_pico::Show()
     }
 }
 
-void LED_pico::SetPixel(uint idx, uint32_t color)
+void LED_pico::SetPixel(uint idx, uint32_t color, uint8_t brightness)
 {
     if (idx == 0 || idx == led_all)
     {
@@ -253,13 +266,13 @@ void LED_neo::Show()
     }
 }
 
-void LED_neo::SetPixel(uint idx, uint32_t color)
+void LED_neo::SetPixel(uint idx, uint32_t color, uint8_t brightness)
 {
     for (size_t i = 0; i < m_nNumLEDs; ++i)
     {
         if (i == idx || led_all == idx)
         {
-            m_vPixels[i] = scale_color(color);
+            m_vPixels[i] = scale_color(color, 0 == brightness ? max_lum : brightness);
         }
     }
 }

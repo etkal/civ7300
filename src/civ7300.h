@@ -1,7 +1,7 @@
 /*
  * Civ7300
  *
- * (c) 2026 Erik Tkal
+ * Copyright (c) 2026 Erik Tkal
  *
  * Basic asynchronous support for the Icom CI-V remote control protocol on an IC-7300. It queues
  * command frames through RadioBridge and parses the resulting OK/NG/data responses. Currently the
@@ -41,8 +41,7 @@ public:
     // avoid colliding with an external controller that uses the more common 0xE0).
     explicit Civ7300(RadioBridge::Shared spBridge,
                      uint8_t radioAddr = 0x94,
-                     uint8_t controllerAddr = 0xE0,
-                     uint32_t timeCheckIntervalMs = 300000);
+                     uint8_t controllerAddr = 0xE0);
 
     // Radio commands complete asynchronously; callbacks run from DoWork().
     void GetDate(DateCallback callback);
@@ -63,9 +62,6 @@ public:
     // True once this class has successfully written the radio's clock; cleared whenever the radio
     // is found to be disconnected, since the radio's clock state is then no longer known.
     bool IsClockSynced() const { return m_bClockSynced; }
-    // The wall-clock source (GPS/NTP) that was authoritative at the time the radio clock was last
-    // set successfully.
-    TimeMgr::TimeSource ClockSyncSource() const { return m_clockSyncSource; }
 
     // Call repeatedly from the main loop. Periodically reads the radio's date/time/UTC offset and
     // corrects any that differ from TimeMgr. Since the radio has no seconds field, a needed
@@ -132,7 +128,6 @@ private:
     bool m_bNeedOffsetFix {false};
     bool m_bRadioConnected {false}; // set once the radio has confirmed itself as an IC-7300 (ID 0x94)
     bool m_bClockSynced {false};    // set once the radio's clock has been successfully written
-    TimeMgr::TimeSource m_clockSyncSource {TimeMgr::TimeSource::Unknown};
     bool m_bFrequencyRequestPending {false};
     bool m_bRadioIdRequestPending {false};
     int m_radioYear {0};

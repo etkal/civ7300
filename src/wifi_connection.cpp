@@ -1,17 +1,34 @@
 /*
  * Wifi connection state machine (station mode only, no server connectivity).
  *
- * (c) 2026 Erik Tkal
+ * Copyright (c) 2026 Erik Tkal
  *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
  */
 
 #include "wifi_connection.h"
 
-#if defined(PLATFORM_PICO_W)
-
 #include <algorithm>
 
+#if defined(PLATFORM_PICO_W)
 #include "pico/cyw43_arch.h"
+#endif
 
 #include "timemgr.h"
 
@@ -23,17 +40,19 @@ namespace
     constexpr uint32_t RETRY_DELAY_MAX_MS = 10000;
 } // namespace
 
-WifiConnection::WifiConnection(std::string ssid, std::string password)
-    : m_ssid(std::move(ssid)),
-      m_password(std::move(password))
+WifiConnection::WifiConnection()
 {
 }
 
-void WifiConnection::Initialize()
+#if defined(PLATFORM_PICO_W)
+void WifiConnection::Initialize(std::string ssid, std::string password)
 {
+    m_ssid = std::move(ssid);
+    m_password = std::move(password);
     m_state = WifiState::Disconnected;
     m_retryDelayMs = RETRY_DELAY_INITIAL_MS;
     m_nextConnectAttempt = get_absolute_time();
+    m_bInitialized = true;
 }
 
 void WifiConnection::SetMessageCallback(MessageCallback callback)
@@ -55,9 +74,15 @@ void WifiConnection::scheduleRetry()
     m_nextConnectAttempt = make_timeout_time_ms(m_retryDelayMs);
     m_retryDelayMs = std::min(m_retryDelayMs + RETRY_DELAY_STEP_MS, RETRY_DELAY_MAX_MS);
 }
+#endif // defined(PLATFORM_PICO_W)
 
 void WifiConnection::DoWork()
 {
+    if (!m_bInitialized)
+    {
+        return;
+    }
+#if defined(PLATFORM_PICO_W)
     switch (m_state)
     {
     case WifiState::Disconnected:
@@ -138,6 +163,7 @@ void WifiConnection::DoWork()
         setState(WifiState::Disconnected);
         return;
     }
+#endif // defined(PLATFORM_PICO_W)
 }
 
 std::string WifiConnection::StateToString(WifiState state)
@@ -156,5 +182,3 @@ std::string WifiConnection::StateToString(WifiState state)
         return "UNKNOWN";
     }
 }
-
-#endif // defined(PLATFORM_PICO_W)

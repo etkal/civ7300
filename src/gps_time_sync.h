@@ -1,7 +1,7 @@
 /*
  * GpsTimeSync class
  *
- * (c) 2026 Erik Tkal
+ * Copyright (c) 2026 Erik Tkal
  *
  * Reads NMEA-0183 sentences from a GPS device on a UART and uses the RMC sentence's time/date
  * fields to keep TimeMgr's wall clock synchronized, as a serial alternative to NTP.

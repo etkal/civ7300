@@ -38,7 +38,7 @@ add_compile_definitions(GMT_OFFSET=-4.0)
 # option can be used to periodically set the radio clock even if it appears to be in sync, in order
 # to maintain more accurate time.
 set(TIME_SYNC_USE_GPS ON)
-#set(TIME_SYNC_USE_NTP ON)
+set(TIME_SYNC_USE_NTP ON)
 set(TIME_SYNC_ALWAYS_SYNC ON)
 
 # Set pico platform definitions for conditional compilation
@@ -48,14 +48,23 @@ endif()
 if(PICO_BOARD STREQUAL pico OR PICO_BOARD STREQUAL pico2 OR PICO_BOARD STREQUAL pico_w OR PICO_BOARD STREQUAL pico2_w)
     add_compile_definitions(PLATFORM_PICO)
 endif()
+
+# Time synchronization configuration
 if(TIME_SYNC_USE_GPS)
     add_compile_definitions(TIME_SYNC_USE_GPS=1)
+else()
+    add_compile_definitions(TIME_SYNC_USE_GPS=0)
 endif()
 if(TIME_SYNC_USE_NTP AND (PICO_BOARD STREQUAL pico_w OR PICO_BOARD STREQUAL pico2_w))
-    add_compile_definitions(TIMEMGR_ENABLE_NTP=1)
+    add_compile_definitions(TIME_SYNC_USE_NTP=1)
+else()
+    add_compile_definitions(TIME_SYNC_USE_NTP=0)
 endif()
 if(TIME_SYNC_ALWAYS_SYNC)
-    add_compile_definitions(TIME_SYNC_ALWAYS_SYNC=1) # Always sync periodically, keeps more accurate time
+    # Always sync periodically, keeps more accurate time
+    add_compile_definitions(TIME_SYNC_ALWAYS_SYNC=1)
+else()
+    add_compile_definitions(TIME_SYNC_ALWAYS_SYNC=0)
 endif()
 
 # initialize the SDK based on PICO_SDK_PATH
@@ -107,15 +116,9 @@ target_link_libraries(civ7300
 )
 
 if(PICO_BOARD STREQUAL pico_w OR PICO_BOARD STREQUAL pico2_w)
-    if(TIME_SYNC_USE_NTP)
-        target_link_libraries(civ7300
-            pico_cyw43_arch_lwip_threadsafe_background
-        )
-    else()
-        target_link_libraries(civ7300
-            pico_cyw43_arch_none
-        )
-    endif()
+    target_link_libraries(civ7300
+        pico_cyw43_arch_lwip_threadsafe_background
+    )
 endif()
 
 # create map/bin/hex/uf2 file in addition to ELF.

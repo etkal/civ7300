@@ -1,13 +1,11 @@
 /*
  * Wifi connection state machine (station mode only, no server connectivity).
  *
- * (c) 2026 Erik Tkal
+ * Copyright (c) 2026 Erik Tkal
  *
  */
 
 #pragma once
-
-#if defined(PLATFORM_PICO_W)
 
 #include <functional>
 #include <memory>
@@ -32,10 +30,10 @@ public:
     typedef std::shared_ptr<WifiConnection> Shared;
     typedef std::function<void(const std::string&)> MessageCallback;
 
-    WifiConnection(std::string ssid, std::string password);
+    WifiConnection();
     ~WifiConnection() = default;
 
-    void Initialize();
+    void Initialize(std::string ssid, std::string password);
     void DoWork();
 
     bool IsConnected() const
@@ -55,6 +53,7 @@ private:
     void setState(WifiState state);
     void scheduleRetry();
 
+    bool m_bInitialized {false};
     std::string m_ssid;
     std::string m_password;
     WifiState m_state {WifiState::Disconnected};
@@ -64,5 +63,3 @@ private:
     absolute_time_t m_nextConnectAttempt {};
     uint32_t m_retryDelayMs {0};
 };
-
-#endif // defined(PLATFORM_PICO_W)

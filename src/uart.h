@@ -1,7 +1,7 @@
 /*
  * Uart class
  *
- * (c) 2026 Erik Tkal
+ * Copyright (c) 2026 Erik Tkal
  *
  * Generic UART wrapper with DMA-buffered, nonblocking RX and blocking/nonblocking TX methods.
  * RX bytes are streamed into a circular buffer by DMA (no interrupt); callers poll with Read().
