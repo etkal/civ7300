@@ -182,6 +182,26 @@ int main()
     bool bPrevClockSynced {true};
     WifiState prevWifiState = WifiState::Unknown;
 
+    if (spButton)
+    {
+        // Tap toggles the Wifi connection on/off based on its current state.
+        spButton->SetEventCallback(spWifi.get(), [](void* pCtx, ButtonEvent eType) {
+            if (ButtonEvent::Press != eType)
+            {
+                return;
+            }
+            WifiConnection* pWifi = static_cast<WifiConnection*>(pCtx);
+            if (WifiState::Disabled == pWifi->GetState())
+            {
+                pWifi->Enable();
+            }
+            else
+            {
+                pWifi->Disable();
+            }
+        });
+    }
+
     LogInfo("Running radio bridge...");
     while (true)
     {
@@ -203,7 +223,8 @@ int main()
             if (wifiState != prevWifiState)
             {
                 prevWifiState = wifiState;
-                uint32_t wifiColor = WifiState::Connected == wifiState    ? led_blue
+                uint32_t wifiColor = WifiState::Disabled == wifiState     ? led_off
+                                     : WifiState::Connected == wifiState  ? led_blue
                                      : WifiState::Connecting == wifiState ? led_orange
                                                                           : led_red;
                 LED::GetLED(0)->SetPixel(1, wifiColor);

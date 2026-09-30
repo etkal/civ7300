@@ -15,6 +15,7 @@
 
 enum class WifiState
 {
+    Disabled,
     Disconnected,
     Connecting,
     Connected,
@@ -34,6 +35,8 @@ public:
     ~WifiConnection() = default;
 
     void Initialize(std::string ssid, std::string password);
+    void Disable();
+    void Enable();
     void DoWork();
 
     bool IsConnected() const
@@ -54,9 +57,10 @@ private:
     void scheduleRetry();
 
     bool m_bInitialized {false};
+    bool m_bDisabling {false};
     std::string m_ssid;
     std::string m_password;
-    WifiState m_state {WifiState::Disconnected};
+    WifiState m_state {WifiState::Disabled};
     MessageCallback m_messageCallback;
 
     absolute_time_t m_connectTimeout {};
