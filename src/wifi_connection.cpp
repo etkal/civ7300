@@ -35,9 +35,8 @@
 namespace
 {
     constexpr uint32_t CONNECT_TIMEOUT_MS = 5000;
-    constexpr uint32_t RETRY_DELAY_INITIAL_MS = 2000;
-    constexpr uint32_t RETRY_DELAY_STEP_MS = 2000;
-    constexpr uint32_t RETRY_DELAY_MAX_MS = 10000;
+    constexpr uint32_t RETRY_DELAY_INITIAL_MS = 1000;
+    constexpr uint32_t RETRY_DELAY_MAX_MS = 120000; // 2 minutes
 } // namespace
 
 WifiConnection::WifiConnection()
@@ -49,10 +48,31 @@ void WifiConnection::Initialize(std::string ssid, std::string password)
 {
     m_ssid = std::move(ssid);
     m_password = std::move(password);
-    m_state = WifiState::Disconnected;
     m_retryDelayMs = RETRY_DELAY_INITIAL_MS;
     m_nextConnectAttempt = get_absolute_time();
     m_bInitialized = true;
+}
+
+void WifiConnection::Disable()
+{
+    LogInfo("Wifi connection disable requested");
+    m_bDisabling = true;
+}
+
+void WifiConnection::Enable()
+{
+    LogInfo("Wifi connection enable requested");
+    if (!m_bInitialized)
+    {
+        return;
+    }
+    if (m_state == WifiState::Disabled)
+    {
+        // Reset the retry delay and schedule the next connection attempt.
+        m_retryDelayMs = RETRY_DELAY_INITIAL_MS;
+        m_nextConnectAttempt = get_absolute_time();
+        setState(WifiState::Disconnected);
+    }
 }
 
 void WifiConnection::SetMessageCallback(MessageCallback callback)
@@ -72,7 +92,7 @@ void WifiConnection::setState(WifiState state)
 void WifiConnection::scheduleRetry()
 {
     m_nextConnectAttempt = make_timeout_time_ms(m_retryDelayMs);
-    m_retryDelayMs = std::min(m_retryDelayMs + RETRY_DELAY_STEP_MS, RETRY_DELAY_MAX_MS);
+    m_retryDelayMs = std::min(m_retryDelayMs * 2, RETRY_DELAY_MAX_MS);
 }
 #endif // defined(PLATFORM_PICO_W)
 
@@ -80,6 +100,14 @@ void WifiConnection::DoWork()
 {
     if (!m_bInitialized)
     {
+        return;
+    }
+    if (m_bDisabling)
+    {
+        LogInfo("Disabling Wifi connection");
+        cyw43_arch_disable_sta_mode();
+        m_bDisabling = false;
+        setState(WifiState::Disabled);
         return;
     }
 #if defined(PLATFORM_PICO_W)
@@ -158,10 +186,13 @@ void WifiConnection::DoWork()
         return;
 
     case WifiState::Error:
-    default:
         scheduleRetry();
         setState(WifiState::Disconnected);
         return;
+
+    case WifiState::Disabled:
+    default:
+        return; // do nothing
     }
 #endif // defined(PLATFORM_PICO_W)
 }
@@ -170,6 +201,8 @@ std::string WifiConnection::StateToString(WifiState state)
 {
     switch (state)
     {
+    case WifiState::Disabled:
+        return "DISABLED";
     case WifiState::Disconnected:
         return "DISCONNECTED";
     case WifiState::Connecting:
